@@ -20,25 +20,29 @@ class Memory:
         pass
 
 class CPU:
-    # bit positions in AF that correspond to the CPU flags
-    Z_FLAG = 7 # zero flag
-    N_FLAG = 6 # negative (AKA subtraction) flag
-    H_FLAG = 5 # half carry flag
-    C_FLAG = 4 # carry flag
-
     def __init__(self, rom: str):
-        # 16-bit registers
+        # 16-bit registers that are made up of two smaller 8-bit registers
+        # ex. AF = A(upper 8 bit register) + F(lower 8 bit register) = 16-bit register
         self.AF = 0
         self.BC = 0
         self.DE = 0
         self.HL = 0
-        self.SP = 0
-        self.PC = 0
+
+        # strictly 16-bit only
+        self.SP = 0 # stack pointer
+        self.PC = 0 # program counter
+
+        # CPU Flags (used to perform conditional branching AKA if statements)
+        # NOTE: each represent 1 bit and together are the upper 4 bits of the F register
+        self.Z = 0 # zero flag
+        self.N = 0 # negative (AKA substract) flag
+        self.H = 0 # half-carry flag
+        self.C = 0 # carry flag
 
         self.mem = Memory(rom)
 
     def execute(self) -> int:
-        # each instruction starts by reading the byte at PC (program counter) which represents the opcode
+        # each instruction starts by reading the byte at PC which represents the opcode
         # (hint: this is where you reference an opcode table to figure out how to process it)
         opcode = self.mem.rom[self.PC]
         self.PC += 1
