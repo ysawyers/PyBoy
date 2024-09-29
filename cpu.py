@@ -29,6 +29,9 @@ class CPU:
         # interrupt master enable: if unset, interrupts absolutely cannot happen
         self.ime = 0
 
+    def read_F_register(self) -> int:
+        return (self.Z << 3) | (self.N << 2) | (self.H << 1) | self.C
+
     def read_u8_imm(self) -> int:
         '''
         reads an unsigned 8-bit immediate value from the location of PC.
@@ -123,10 +126,10 @@ class CPU:
                 return 6
 
             case 0x7D: # LD A, L (pg. 21)
-                self.A = (self.HL & 0xFF) << 8
+                self.A = self.HL & 0xFF
                 print("LD A, L")
                 return 1
-            
+
             case 0x7C: # LD A, H (pg. 21)
                 self.A = self.HL >> 8
                 print("LD A, H")
@@ -146,6 +149,88 @@ class CPU:
                 self.PC = (msb << 8) | lsb
                 print("RET")
                 return 4
+
+            case 0xE5: # PUSH HL (pg. 43)
+                self.SP = u16(self.SP - 1)
+                self.mem.write(self.SP, self.HL >> 8)
+                self.SP = u16(self.SP - 1)
+                self.mem.write(self.SP, self.HL & 0xFF)
+                print("PUSH HL")
+                return 4
+
+            case 0xE1: # POP HL (pg. 44)
+                lsb = self.mem.read(self.SP)
+                self.SP = u16(self.SP + 1)
+                msb = self.mem.read(self.SP)
+                self.SP = u16(self.SP + 1)
+                self.HL = (msb << 8) | lsb
+                print("POP HL")
+                return 3
+
+            case 0xF5: # PUSH AF (pg. 43)
+                self.SP = u16(self.SP - 1)
+                self.mem.write(self.SP, self.A)
+                self.SP = u16(self.SP - 1)
+                self.mem.write(self.SP, self.read_F_register())
+                print("PUSH AF")
+                return 4
+
+            case 0x23: # INC HL (pg. 78)
+                self.HL = u16(self.HL + 1)
+                print("INC HL")
+                return 2
+
+            case 0x2A: # LD A, (HL+) (pg. 38)
+                self.A = self.mem.read(self.HL)
+                self.HL = u16(self.HL + 1)
+                print("LD A, (HL+)")
+                return 2
+
+            case 0xF1: # POP AF (pg. 44)
+                lsb = self.mem.read(self.SP)
+                self.SP = u16(self.SP + 1)
+                msb = self.mem.read(self.SP)
+                self.SP = u16(self.SP + 1)
+                self.A = msb
+                self.Z = (lsb >> 3) & 1
+                self.N = (lsb >> 2) & 1
+                self.H = (lsb >> 1) & 1
+                self.C = lsb & 1
+                print("POP AF")
+                return 3
+
+            case 0xC5: # PUSH BC (pg. 43)
+                self.SP = u16(self.SP - 1)
+                self.mem.write(self.SP, self.BC >> 8)
+                self.SP = u16(self.SP - 1)
+                self.mem.write(self.SP, self.BC & 0xFF)
+                print("PUSH BC")
+                return 4
+
+            case 0x01: # LD BC, nn (pg. 40)
+                nn = self.read_u16_imm()
+                self.BC = nn
+                print("LD BC,", hex(nn))
+                return 3
+
+            case 0x03: # INC BC (pg. 78)
+                self.BC = u16(self.BC + 1)
+                print("INC BC")
+                return 2
+
+            case 0x78: # LD A, B (pg. 21)
+                self.A = self.BC >> 8
+                print("LD A, B")
+                return 1
+
+            case 0xB1: # OR A, C (pg. 68)
+                self.A |= (self.BC & 0xFF)
+                self.Z = self.A == 0
+                self.N = 0
+                self.H = 0
+                self.C = 0
+                print("OR A, C")
+                return 1
 
             case _:
                 print("undefined opcode:", hex(opcode))
