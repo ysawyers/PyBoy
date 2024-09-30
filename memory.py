@@ -1,6 +1,7 @@
 from typing import List
 from timer import Timer
 from apu import APU
+from ppu import PPU
 
 # https://gbdev.io/pandocs/Memory_Map.html
 class Memory:
@@ -16,10 +17,19 @@ class Memory:
         # components of the Gameboy that memory has access to
         self.timer = Timer()
         self.apu = APU()
+        self.ppu = PPU()
+
+        self.ticks_per_instr = 0
 
         # loading the "game cartridge" into our emulator
         with open(rom, "rb") as f:
             self.rom = f.read()
+
+    def tick(self):
+        self.ticks_per_instr += 1
+        self.ppu.tick()
+        self.apu.tick()
+        self.timer.tick()
 
     def read(self, addr: int) -> int:
         '''
@@ -29,14 +39,36 @@ class Memory:
         :return: byte read at address
         '''
 
+        self.tick()
+
         # checking upper 4 bits to determine what region to read from quickly
         match addr >> 12:
             case 0x0 | 0x1 | 0x2 | 0x3 | 0x4 | 0x5 | 0x6 | 0x7:
                 return self.rom[addr]
             case 0xC | 0xD:
                 return self.wram[addr - 0xC000]
-            case _:
-                pass
+            case 0xE:
+                # Nintendo says use of this area is prohibited.
+                return 0xFF
+            case 0xF:
+                if addr <= 0xFDFF:
+                    # Nintendo says use of this area is prohibited.
+                    return 0xFF
+                elif addr >= 0xFE00 and addr <= 0xFE9F:
+                    return self.oam
+                elif addr >= 0xFEA0 and addr <= 0xFEFF:
+                    # Nintendo says use of this area is prohibited.
+                    return 0xFF
+                elif addr >= 0xFF80 and addr <= 0xFFFE:
+                    return self.hram
+                else:
+                    # memory mapped IO + IE (interrupt enable register)
+                    match addr:
+                        case 0xFF44:
+                            return self.ppu.LY
+                        case _:
+                            print("attempted to read from mmio register:", hex(addr))
+                            exit(1)
 
         print("attempted to read to:", hex(addr))
         exit(1)
@@ -49,48 +81,50 @@ class Memory:
         :param value: unsigned 16-bit value
         '''
 
+        self.tick()
+
         match addr >> 12:
             case 0x0 | 0x1 | 0x2 | 0x3 | 0x4 | 0x5 | 0x6 | 0x7:
                 self.rom[addr] = value
             case 0xC | 0xD:
                 self.wram[addr - 0xC000] = value
-
-            case 0xF:
-                if addr >= 0xFE00 and addr <= 0xFE9F:
-                    self.oam = value
-                    return
-
+            case 0xE:
                 # Nintendo says use of this area is prohibited.
-                if addr >= 0xFEA0 and addr <= 0xFEFF:
-                    return
-                
-                if addr >= 0xFF80 and addr <= 0xFFFE:
+                pass
+            case 0xF:
+                if addr <= 0xFDFF:
+                    # Nintendo says use of this area is prohibited.
+                    pass
+                elif addr >= 0xFE00 and addr <= 0xFE9F:
+                    self.oam = value
+                elif addr >= 0xFEA0 and addr <= 0xFEFF:
+                    # Nintendo says use of this area is prohibited.
+                    pass
+                elif addr >= 0xFF80 and addr <= 0xFFFE:
                     self.hram = value
-                    return
-
-                # memory mapped IO + IE (interrupt enable register)
-                match addr:
-                    case 0xFF07:
-                        self.timer.TAC = value
-                    case 0xFF0F:
-                        self.IF = value
-                    case 0xFF26:
-                        self.apu.NR52 = value
-                    case 0xFF25:
-                        self.apu.NR51 = value
-                    case 0xFF24:
-                        self.apu.NR50 = value
-                    case 0xFFFF:
-                        self.IE = value
-                    case _:
-                        print("attempted to write to mmio register:", hex(addr))
-                        exit(1)
-
+                else:
+                    # memory mapped IO + IE (interrupt enable register)
+                    match addr:
+                        case 0xFF07:
+                            self.timer.TAC = value
+                        case 0xFF0F:
+                            self.IF = value
+                        case 0xFF26:
+                            self.apu.NR52 = value
+                        case 0xFF25:
+                            self.apu.NR51 = value
+                        case 0xFF24:
+                            self.apu.NR50 = value
+                        case 0xFF40:
+                            self.ppu.LCDC = value
+                        case 0xFFFF:
+                            self.IE = value
+                        case _:
+                            print("attempted to write to mmio register:", hex(addr))
+                            exit(1)
             case _:
                 print("attempted to write to:", hex(addr))
                 exit(1)
-
-
 
 
 
