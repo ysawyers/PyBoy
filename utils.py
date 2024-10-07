@@ -1,3 +1,6 @@
+def u8(v: int) -> int:
+    return v & 0xFF
+
 def i8(v: int) -> int:
     return ((v & 0xFF) ^ 0x80) - 0x80
 

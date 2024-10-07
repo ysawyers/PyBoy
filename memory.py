@@ -5,25 +5,34 @@ from ppu import PPU
 
 # https://gbdev.io/pandocs/Memory_Map.html
 class Memory:
-    def __init__(self, rom: str):
-        self.rom: List[int] = []
+    def __init__(self, rom: str | None):
+        self.testing = False
+
+        self.rom: List[int] = [0] * 0x8000 # 0x0000 - 0x7FFF (* some games will be larger than what can fit in this region, memory banking lecture will come down the road *)
+        self.eram = [0] * 0x2000 # 0xA000 - 0xBFFF (8 KiB)
         self.wram = [0] * 0x2000 # 0xC000 - 0xDFFF (8 KiB)
-        self.oam = [0] * 0xA0 # 0xFE00 - 0xFE9F
         self.hram = [0] * 0x7F # 0xFF80 - 0xFFFE
 
         self.IF = 0x0
         self.IE = 0x0
+
+        self.ticks_per_instr = 0
 
         # components of the Gameboy that memory has access to
         self.timer = Timer()
         self.apu = APU()
         self.ppu = PPU()
 
-        self.ticks_per_instr = 0
-
-        # loading the "game cartridge" into our emulator
-        with open(rom, "rb") as f:
-            self.rom = f.read()
+        if rom:
+            # loading the "game cartridge" into our emulator
+            with open(rom, "rb") as f:
+                self.rom = f.read()
+        else:
+            # if no ROM is "inserted" the CPU is assumed to be in a mode for debugging
+            # this array represents the entire memory in a plain array of bytes which
+            # is used to test the integrity of tests
+            self.testing = True
+            self.memory = [0] * 0x10000
 
     def tick(self):
         self.ticks_per_instr += 1
@@ -41,6 +50,9 @@ class Memory:
 
         self.tick()
 
+        if self.testing:
+            return self.memory[addr]
+
         # checking upper 4 bits to determine what region to read from quickly
         match addr >> 12:
             case 0x0 | 0x1 | 0x2 | 0x3 | 0x4 | 0x5 | 0x6 | 0x7:
@@ -55,12 +67,12 @@ class Memory:
                     # Nintendo says use of this area is prohibited.
                     return 0xFF
                 elif addr >= 0xFE00 and addr <= 0xFE9F:
-                    return self.oam
+                    return self.ppu.oam[addr - 0xFE00]
                 elif addr >= 0xFEA0 and addr <= 0xFEFF:
                     # Nintendo says use of this area is prohibited.
                     return 0xFF
                 elif addr >= 0xFF80 and addr <= 0xFFFE:
-                    return self.hram
+                    return self.hram[addr - 0xFF80]
                 else:
                     # memory mapped IO + IE (interrupt enable register)
                     match addr:
@@ -83,9 +95,18 @@ class Memory:
 
         self.tick()
 
+        if self.testing:
+            self.memory[addr] = value
+            return
+
         match addr >> 12:
             case 0x0 | 0x1 | 0x2 | 0x3 | 0x4 | 0x5 | 0x6 | 0x7:
-                self.rom[addr] = value
+                # cannot write to ROM (this will change when we get to memory banking)
+                pass
+            case 0x8 | 0x9:
+                self.ppu.vram[addr - 0x8000] = value
+            case 0xA | 0xB:
+                self.eram[addr - 0xA000] = value
             case 0xC | 0xD:
                 self.wram[addr - 0xC000] = value
             case 0xE:
@@ -96,12 +117,12 @@ class Memory:
                     # Nintendo says use of this area is prohibited.
                     pass
                 elif addr >= 0xFE00 and addr <= 0xFE9F:
-                    self.oam = value
+                    self.ppu.oam[addr - 0xFE00] = value
                 elif addr >= 0xFEA0 and addr <= 0xFEFF:
                     # Nintendo says use of this area is prohibited.
                     pass
                 elif addr >= 0xFF80 and addr <= 0xFFFE:
-                    self.hram = value
+                    self.hram[addr - 0xFF80] = value
                 else:
                     # memory mapped IO + IE (interrupt enable register)
                     match addr:
@@ -117,6 +138,12 @@ class Memory:
                             self.apu.NR50 = value
                         case 0xFF40:
                             self.ppu.LCDC = value
+                        case 0xFF42:
+                            self.ppu.SCY = value
+                        case 0xFF43:
+                            self.ppu.SCX = value
+                        case 0xFF47:
+                            self.ppu.BGP = value
                         case 0xFFFF:
                             self.IE = value
                         case _:
@@ -125,50 +152,3 @@ class Memory:
             case _:
                 print("attempted to write to:", hex(addr))
                 exit(1)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-'''
-IGNORE FOR NOW:
-self.vram = [0] * 0x2000 # 0x8000 - 0x9FFF (8 KiB)
-self.eram = [0] * 0x2000 # 0xA000 - 0xBFFF (8 KiB)
-
-# 0xE000 - 0xFDFF (PROHIBITED BY NINTENDO)
-
-# 0xFEA0 - 0xFEFF (PROHIBITED BY NINTENDO)
-self.mmio = [0] * 0x80
-
-
-# loading the boot rom into our emulator
-        with open("bootrom.bin", "rb") as f:
-            self.bootrom = f.read()
-
-REMEMBER TO ALSO SET LCDC TO 0x91
-'''
